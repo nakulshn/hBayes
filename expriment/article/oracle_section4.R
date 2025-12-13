@@ -1,54 +1,203 @@
-
+# oracle_section4_plots.R
 library(NPBayes)
 library(glmnet)
-n.gibbs <- 110
-sim <- 1
-burnin  <- ceiling(0.1*n.gibbs)
-n	<- 4000
-p	<- 800
+
+# ---------------------------
+# Settings you asked for
+# ---------------------------
+n.gibbs <- 100000
+burnin  <- 100
+nsim    <- 1
+
+# Which beta scenario to run? (original file has j=1..3)
+# If you want all 3 scenarios, set scenario_ids <- 1:3
+scenario_ids <- 2  # start with 1 to match a single-figure workflow
+
+# Output folder
+out_dir <- file.path(getwd(), "oracle_section4_out")
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 set.seed(1)
 
-sim.mse.mat <- array(dim=c(5, sim, 3))
-X.mat	<- array(rnorm(n*p,mean = 0, sd = sqrt(1/n)),dim=c(n,p))
+# ---------------------------
+# Data generation (same as original)
+# ---------------------------
+n <- 4000
+p <- 800
 
-betas <- array(dim=c(p,3))
-betas[,1] <- c(rep(-10,100),rep(10,100),rep(0,600))
-betas[,2] <- rnorm(p,mean = 3, sd = 4)
-betas[,3] <- rbinom(p,1,0.5)*rnorm(p,mean = 7, sd = 1)
+X.mat <- matrix(rnorm(n*p, mean = 0, sd = sqrt(1/n)), n, p)
 
-inv.log.odds <- function(Xbeta){
-    return(1/(1+ exp(-Xbeta)))
+betas <- matrix(0, p, 3)
+betas[,1] <- c(rep(-10,100), rep(10,100), rep(0,600))
+betas[,2] <- rnorm(p, mean = 0, sd = 1)
+#resample betas that are out of [-3, 3] so they all lie in [-3, 3]
+out_of_bounds <- which(betas[,2] < -3 | betas[,2] > 3)
+while(length(out_of_bounds) > 0) {
+  betas[out_of_bounds,2] <- rnorm(length(out_of_bounds), mean = 0, sd = 1)
+  out_of_bounds <- which(betas[,2] < -3 | betas[,2] > 3)
+}
+betas[,3] <- rbinom(p, 1, 0.5) * rnorm(p, mean = 7, sd = 1)
+
+inv.log.odds <- function(Xbeta) 1/(1 + exp(-Xbeta))
+
+# ---------------------------
+# Helper: make CDF bands from pi.gibbs draws
+# pi.gibbs is stored in log space in NPBayes scripts (they use exp(pi.gibbs))
+# ---------------------------
+cdf_bands_from_pi <- function(pi_gibbs_log, a_vec, burnin) {
+  post_idx <- (burnin + 1):nrow(pi_gibbs_log)
+  pi_post  <- exp(pi_gibbs_log[post_idx, , drop = FALSE])   # T_post x (K-1)
+
+  # Normalize each draw defensively (should already sum to ~1, but better safe)
+  pi_post <- pi_post / rowSums(pi_post)
+
+  # CDF for each draw on support a_vec[-1] with a leading 0 at a_vec[1]
+  cdf_post <- t(apply(pi_post, 1, cumsum))                  # T_post x (K-1)
+  cdf_post <- cbind(0, cdf_post)                            # T_post x K
+
+  # pointwise quantiles across MCMC draws
+  qs <- apply(cdf_post, 2, quantile, probs = c(0.025, 0.50, 0.975), na.rm = TRUE)
+  # qs is 3 x K
+  list(cdf_draws = cdf_post, q025 = qs[1,], q50 = qs[2,], q975 = qs[3,])
 }
 
-for(i in 1:sim){
-    for(j in 1:3){
-        cat('(i,j) = (',i,',',j,')\n')
-        y		  <- rbinom(n,1,inv.log.odds(X.mat %*% betas[,j]))
-        beta.oracle <- gibbs.logistic.permute.oracle(n.gibbs, y, X.mat, betas[,j],F)
-        beta.oracle <- colMeans(beta.oracle[burnin:n.gibbs,])
+# ---------------------------
+# Storage
+# ---------------------------
+results <- vector("list", length = nsim)
+names(results) <- paste0("sim", seq_len(nsim))
 
-        fit	    <- glm(y ~ X.mat + 0,family = binomial)
-        beta.lse <- fit$coeff
+mse_mat <- array(NA_real_, dim = c(4, nsim, length(scenario_ids)),
+                 dimnames = list(c("lse","hBayes","lasso","ridge"), #"oracle",
+                                 paste0("sim",1:nsim),
+                                 paste0("scenario",scenario_ids)))
+
+# ---------------------------
+# Main loop
+# ---------------------------
+for (s in 1:nsim) {
+  cat("=== sim", s, "of", nsim, "===\n")
+
+  sim_out <- list()
+  sim_out$scenario <- list()
+
+  for (jj in seq_along(scenario_ids)) {
+    j <- scenario_ids[jj]
+    cat("  scenario", j, "\n")
+
+    sigma_true <- 0.1
+    y <- as.numeric(X.mat %*% betas[,j] + sigma_true * rnorm(n))
 
 
-        fit.glmnet	<- cv.glmnet(X.mat,y,alpha = 1,intercept = FALSE, family = "binomial",type.measure = "class")
-        beta.lasso	<- as.numeric(coef(fit.glmnet, s = "lambda.min"))[-1]
+    # # oracle (as in original script)
+    # beta.oracle <- gibbs.logistic.permute.oracle(n.gibbs, y, X.mat, betas[,j], FALSE)
+    # beta.oracle <- colMeans(beta.oracle[(burnin+1):n.gibbs, , drop=FALSE])
 
-        fit.glmnet	<- cv.glmnet(X.mat,y, alpha = 0,intercept = FALSE, family = "binomial",type.measure = "class")
-        beta.ridge	<- as.numeric(coef(fit.glmnet, s = "lambda.min"))[-1]
+    # MLE
+fit <- lm(y ~ X.mat + 0)
+beta.lse <- coef(fit)
+
+# lasso
+fit.glmnet <- cv.glmnet(X.mat, y, alpha = 1, intercept = FALSE, family = "gaussian")
+beta.lasso <- as.numeric(coef(fit.glmnet, s="lambda.min"))[-1]
+
+# ridge
+fit.glmnet <- cv.glmnet(X.mat, y, alpha = 0, intercept = FALSE, family = "gaussian")
+beta.ridge <- as.numeric(coef(fit.glmnet, s="lambda.min"))[-1]
+
+    # prior support bounds (same logic as original)
+a.min <- -3 #min(beta.lse) - 1
+a.max <- 3 #max(beta.lse) + 1
+
+    # hBayes Gibbs (C++ backend)
+hBeta <- gibbs.normal.fixed.sigma(
+  n.gibbs, y, X.mat,
+  sigma_true,
+  c(a.min, a.max),
+  6,
+  as.vector(beta.ridge),
+  cpp = TRUE
+)
 
 
-        a.min <- min(c(-24,beta.lse - 0.5))
-        a.max <- max(c(24,beta.lse + 0.5))
+    beta.hBeta <- colMeans(hBeta$beta.gibbs[(burnin+1):n.gibbs, , drop=FALSE])
 
+    # MSEs
+    mse_mat["lse",   s, jj] <- mean((beta.lse    - betas[,j])^2)
+    # mse_mat["oracle",s, jj] <- mean((beta.oracle - betas[,j])^2)
+    mse_mat["hBayes",s, jj] <- mean((beta.hBeta  - betas[,j])^2)
+    mse_mat["lasso", s, jj] <- mean((beta.lasso  - betas[,j])^2)
+    mse_mat["ridge", s, jj] <- mean((beta.ridge  - betas[,j])^2)
 
-        hBeta <- gibbs.logistic(n.gibbs,y,X.mat,c(a.min,a.max),6,as.vector(beta.ridge),cpp=T)
-        beta.hBeta <- colMeans(hBeta$beta.gibbs[burnin:n.gibbs,])
-        sim.mse.mat[1, i, j] <- mean((beta.lse    - betas[,j])^2)
-        sim.mse.mat[2, i, j] <- mean((beta.oracle - betas[,j])^2)
-        sim.mse.mat[3, i, j] <- mean((beta.hBeta  - betas[,j])^2)
-        sim.mse.mat[4, i, j] <- mean((beta.lasso  - betas[,j])^2)
-        sim.mse.mat[5, i, j] <- mean((beta.ridge  - betas[,j])^2)
-    }
+    # CDF bands for the learned prior on beta
+    # NOTE: hBeta$a.vec is the grid; exp(hBeta$pi.gibbs[t,]) is mass on intervals a.vec[-1]
+    cdf_info <- cdf_bands_from_pi(hBeta$pi.gibbs, hBeta$a.vec, burnin)
+
+    # Save per-scenario outputs (this is "all data" for later debugging/analysis)
+    sim_out$scenario[[paste0("scenario",j)]] <- list(
+      y = y,
+      beta_true = betas[,j],
+      beta_lse = beta.lse,
+    #   beta_oracle = beta.oracle,
+      beta_hBayes = beta.hBeta,
+      beta_lasso = beta.lasso,
+      beta_ridge = beta.ridge,
+      a_vec = hBeta$a.vec,
+      pi_gibbs_log = hBeta$pi.gibbs,
+      cdf_q025 = cdf_info$q025,
+      cdf_q50  = cdf_info$q50,
+      cdf_q975 = cdf_info$q975,
+      hBayes_raw = hBeta
+    )
+
+    # ---- Plot per-sim CDF bands ----
+    fig_file <- file.path(out_dir, sprintf("cdf_sim%02d_scenario%d.png", s, j))
+    png(fig_file, width = 900, height = 650)
+    plot(hBeta$a.vec, cdf_info$q50, type="l", lwd=2,
+         xlab=expression(beta), ylab="CDF",
+         main=sprintf("hBayes prior CDF (sim %d, scenario %d)", s, j))
+    lines(hBeta$a.vec, cdf_info$q025, lty=2, lwd=2)
+    lines(hBeta$a.vec, cdf_info$q975, lty=2, lwd=2)
+    dev.off()
+  }
+
+  results[[s]] <- sim_out
 }
+
+# ---------------------------
+# Pooled / average CDF plot across sims
+# (You said: “average/concatenation of all sims” — this is the clean version:
+#   average the posterior-median CDF curves pointwise.)
+# ---------------------------
+for (jj in seq_along(scenario_ids)) {
+  j <- scenario_ids[jj]
+
+  # assume a_vec is identical across sims for a fixed scenario (it should be, unless a.min/a.max vary).
+  # If you see mismatches, we can switch to an interpolation to a common grid.
+  a0 <- results[[1]]$scenario[[paste0("scenario",j)]]$a_vec
+
+  cdf_mat <- do.call(rbind, lapply(results, function(sim_out) {
+    sim_out$scenario[[paste0("scenario",j)]]$cdf_q50
+  }))
+
+  avg_cdf <- colMeans(cdf_mat)
+
+  pooled_file <- file.path(out_dir, sprintf("cdf_pooled_avg_scenario%d.png", j))
+  png(pooled_file, width = 900, height = 650)
+  plot(a0, avg_cdf, type="l", lwd=2,
+       xlab=expression(beta), ylab="CDF",
+       main=sprintf("Pooled average CDF across %d sims (scenario %d)", nsim, j))
+  dev.off()
+}
+
+# ---------------------------
+# Save everything
+# ---------------------------
+saveRDS(list(
+  settings = list(n.gibbs=n.gibbs, burnin=burnin, nsim=nsim, scenario_ids=scenario_ids),
+  mse_mat = mse_mat,
+  results = results
+), file = file.path(out_dir, "oracle_section4_all_results.rds"))
+
+cat("\nDone.\nOutputs in:", out_dir, "\n")
+print(apply(mse_mat, c(1,3), mean, na.rm=TRUE))
