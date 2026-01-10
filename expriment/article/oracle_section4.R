@@ -1,41 +1,77 @@
-# oracle_section4_plots.R
 library(NPBayes)
 library(glmnet)
+
+# ---- CLI args: --seed, --runid, (optional) --scenario ----
+args <- commandArgs(trailingOnly = TRUE)
+
+get_arg <- function(flag, default = NULL) {
+  i <- match(flag, args)
+  if (!is.na(i) && i < length(args)) return(args[i + 1])
+  default
+}
+
+seed   <- as.integer(get_arg("--seed", 1))
+runid  <- as.integer(get_arg("--runid", seed))
+# optional: allow overriding scenario_ids from CLI
+scenario_cli <- get_arg("--scenario", NA)
+if (!is.na(scenario_cli)) {
+  scenario_ids <- as.integer(strsplit(scenario_cli, ",")[[1]])
+} else {
+  scenario_ids <- 2
+}
+
+set.seed(seed)
+
+# Unique output folder per run
+out_dir <- file.path(getwd(), "bimodal_oracle_section4_out", paste0("run_", runid, "_seed_", seed))
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+
+cat("Running with seed =", seed, " runid =", runid, "\n")
+cat("Output dir:", out_dir, "\n")
+
 
 # ---------------------------
 # Settings you asked for
 # ---------------------------
-n.gibbs <- 100000
-burnin  <- 100
+n.gibbs <- 200000
+burnin  <- 10
 nsim    <- 1
-
-# Which beta scenario to run? (original file has j=1..3)
-# If you want all 3 scenarios, set scenario_ids <- 1:3
-scenario_ids <- 2  # start with 1 to match a single-figure workflow
-
-# Output folder
-out_dir <- file.path(getwd(), "oracle_section4_out")
-dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
-
-set.seed(1)
 
 # ---------------------------
 # Data generation (same as original)
 # ---------------------------
-n <- 4000
+n <- 8000
 p <- 800
 
 X.mat <- matrix(rnorm(n*p, mean = 0, sd = sqrt(1/n)), n, p)
 
 betas <- matrix(0, p, 3)
-betas[,1] <- c(rep(-10,100), rep(10,100), rep(0,600))
-betas[,2] <- rnorm(p, mean = 0, sd = 1)
-#resample betas that are out of [-3, 3] so they all lie in [-3, 3]
+betas[,1] <- c(rep(-10,100), rep(10,100), rep(0,p - 200))
+# betas[,2] <- rnorm(p, mean = 0, sd = 1)
+# #resample betas that are out of [-3, 3] so they all lie in [-3, 3]
+# out_of_bounds <- which(betas[,2] < -3 | betas[,2] > 3)
+# while(length(out_of_bounds) > 0) {
+#   betas[out_of_bounds,2] <- rnorm(length(out_of_bounds), mean = 0, sd = 1)
+#   out_of_bounds <- which(betas[,2] < -3 | betas[,2] > 3)
+# }
+
+# initial draw from mixture
+mix <- rbinom(p, 1, 0.5)
+betas[,2] <- rnorm(p, mean = ifelse(mix == 1, 1.5, -1.5), sd = 0.5)
+
+# optional: reject and resample values outside [-3, 3]
 out_of_bounds <- which(betas[,2] < -3 | betas[,2] > 3)
 while(length(out_of_bounds) > 0) {
-  betas[out_of_bounds,2] <- rnorm(length(out_of_bounds), mean = 0, sd = 1)
+  mix2 <- rbinom(length(out_of_bounds), 1, 0.5)
+  betas[out_of_bounds,2] <- rnorm(
+    length(out_of_bounds),
+    mean = ifelse(mix2 == 1, 1.5, -1.5),
+    sd = 0.5
+  )
   out_of_bounds <- which(betas[,2] < -3 | betas[,2] > 3)
 }
+
+
 betas[,3] <- rbinom(p, 1, 0.5) * rnorm(p, mean = 7, sd = 1)
 
 inv.log.odds <- function(Xbeta) 1/(1 + exp(-Xbeta))
@@ -85,7 +121,7 @@ for (s in 1:nsim) {
     j <- scenario_ids[jj]
     cat("  scenario", j, "\n")
 
-    sigma_true <- 0.1
+    sigma_true <- 1.0
     y <- as.numeric(X.mat %*% betas[,j] + sigma_true * rnorm(n))
 
 
@@ -108,6 +144,8 @@ beta.ridge <- as.numeric(coef(fit.glmnet, s="lambda.min"))[-1]
     # prior support bounds (same logic as original)
 a.min <- -3 #min(beta.lse) - 1
 a.max <- 3 #max(beta.lse) + 1
+
+set.seed(seed + runid)
 
     # hBayes Gibbs (C++ backend)
 hBeta <- gibbs.normal.fixed.sigma(
@@ -196,7 +234,8 @@ for (jj in seq_along(scenario_ids)) {
 saveRDS(list(
   settings = list(n.gibbs=n.gibbs, burnin=burnin, nsim=nsim, scenario_ids=scenario_ids),
   mse_mat = mse_mat,
-  results = results
+  results = results,
+  X = X.mat
 ), file = file.path(out_dir, "oracle_section4_all_results.rds"))
 
 cat("\nDone.\nOutputs in:", out_dir, "\n")
