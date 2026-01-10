@@ -9,6 +9,14 @@ permute_gibbs_beta_logistic_cpp <- function(Y, Xbeta, X, beta) {
     .Call(`_NPBayes_permute_gibbs_beta_logistic_cpp`, Y, Xbeta, X, beta)
 }
 
+sample_j_cumulative <- function(cumP, i) {
+    .Call(`_NPBayes_sample_j_cumulative`, cumP, i)
+}
+
+permute_gibbs_beta_normal_corr_cpp <- function(Y, Xbeta, X, sigma, beta, betaind, cumP) {
+    .Call(`_NPBayes_permute_gibbs_beta_normal_corr_cpp`, Y, Xbeta, X, sigma, beta, betaind, cumP)
+}
+
 sample_gibbs_beta_logistic_cpp <- function(Y, Xbeta, X, beta, betaind, avec, pivec, innersample = 5L, interval_sample = 2.) {
     .Call(`_NPBayes_sample_gibbs_beta_logistic_cpp`, Y, Xbeta, X, beta, betaind, avec, pivec, innersample, interval_sample)
 }

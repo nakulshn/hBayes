@@ -1,3 +1,6 @@
+graphics.off()
+iter= 500
+
 #' Solver of for asymptotic distribution of generalized lasso
 #' L(u) = \frac{1}{2} u^T C u - u^T w + f'(\beta_0;u)
 #' where f' is directional derivative of f(\beta) = \lambda |A\beta|
@@ -5,8 +8,6 @@
 #' Let E_A be a diagonal m x m matrix with diagonal sign(A\beta) where
 #' sign(0)=0
 #' Then f'(\beta_0;u) = \lambda \sum_i (E_A A)_iu + \lambda|(I - abs(E_A)) Au|
-graphics.off()
-iter= 500
 Loss<-function(u, C, A, w, beta0, lambda ){
     E_1 <- diag(c(sign(A%*%beta0)))
     ind <- which(diag(E_1)==0)

@@ -131,6 +131,9 @@ vp.repr.orth.mat <- function(orth.mat)
             orth.mat					<- (house.reflctn(v.p.mat[1:(m-i+1),i]) %*% orth.mat)[2:(m-i+1),2:(m-i+1)]
         }
     }
+    if(is.na(sum(eval.orth.mat.2D(orth.mat)))==T){
+        print('error')
+    }
 
     v.p.mat[1,c(m-1,m)] <- 	 eval.orth.mat.2D(orth.mat)
     return(v.p.mat)

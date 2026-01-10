@@ -15,6 +15,7 @@
 #' @param beta    -  (p x 1)  inital guess of beta
 #' @param cpp     -  (bool) use C++
 #'
+#'@export
 gibbs.normal.permute.beta.fixed.sigma          <- function(n.gibbs,
                                                                Y,
                                                                X,
@@ -97,5 +98,96 @@ gibbs.normal.permute.beta.fixed.sigma          <- function(n.gibbs,
 
 }
 
+#' Gibbs Sampler with Beta Permutation and Sigma Sampling
+#'
+#' Performs Gibbs sampling for normal linear model with beta coefficient permutation
+#' and variance parameter (sigma^2) sampling.
+#'
+#' @param n.gibbs Number of Gibbs samples (integer)
+#' @param Y Response vector (n x 1)
+#' @param X Design matrix (n x p)
+#' @param a.int Interval boundaries for beta coefficients (vector length 2)
+#' @param L Number of bins (2^L) for density estimation (integer)
+#' @param beta Initial beta coefficients (vector length p)
+#' @param cpp Use C++ implementation (logical, default = TRUE)
+#' @param quiet Suppress iteration messages (logical, default = TRUE)
+#'
+#' @return List containing:
+#' \itemize{
+#'   \item a.vec - Bin boundaries
+#'   \item pi.gibbs - Density estimates
+#'   \item beta.gibbs - Sampled beta coefficients
+#'   \item delta.gibbs - Bin indices
+#'   \item sigma.gibbs - Sampled sigma values
+#' }
+#'
+#' @export
+gibbs.normal.permute.beta <- function(n.gibbs, Y, X, beta,gamma=1,quiet = TRUE) {
 
+    # Initialize dimensions and data structures
+    p <- ncol(X)
+    n <- nrow(X)
 
+    cumP <- compute_cumulative_probabilities(X, gamma)
+    # Initialize storage arrays
+    beta.gibbs <- array(dim = c(n.gibbs, p))
+    sigma.gibbs <- numeric(n.gibbs)
+
+    # Initialize beta and truncate values
+    beta.gibbs[1,] <- beta
+
+    # Initialize priors and first sample
+    Xbeta <- X %*% beta
+    sigma.gibbs[1] <- sqrt(1/rgamma(1, 0.5*n + 1, 0.5*sum((Y - Xbeta)^2)))
+    betaind = 1:p
+    # Main Gibbs loop
+    for (g in 2:n.gibbs) {
+        if (!quiet && g %% 100 == 1) message("Iteration ", g)
+
+        # Sample sigma
+        sigma <- sqrt(1/rgamma(1, 0.5*n + 1, 0.5*sum((Y - X %*% beta.gibbs[g-1,])^2)))
+        sigma.gibbs[g] <- sigma
+
+        # Permute beta coefficients
+        beta.gibbs.g   <- beta.gibbs[g-1,]
+        if(g%%2 == 0){
+            res <- permute_gibbs_beta_normal_cpp(Y, Xbeta, X, sigma,
+                                                     beta.gibbs.g,betaind)
+        }else{
+            res <- permute_gibbs_beta_normal_corr_cpp(Y, Xbeta, X, sigma,
+                                                          beta.gibbs.g,betaind,cumP)
+        }
+
+        # Update beta values and indices
+        beta.gibbs[g,] <- beta.gibbs.g
+
+        # Update linear predictor
+        #Xbeta <- X %*% beta.gibbs[g,]
+    }
+
+    return(list(
+        beta.gibbs = beta.gibbs,
+        sigma.gibbs = sigma.gibbs
+    ))
+}
+
+compute_cumulative_probabilities <- function(X, gamma) {
+    # Compute correlation matrix (columns are predictors)
+    S <- cor(X)
+
+    # Apply exponential transformation and zero out the diagonal
+    P <- exp(gamma * S)
+    diag(P) <- 0  # Ensure the diagonal is zero
+
+    # Normalize each row so that probabilities sum to 1.
+    # Using sweep to vectorize the row division.
+    row_sums <- rowSums(P)
+    P <- sweep(P, 1, row_sums, FUN = "/")
+    # Replace any NaN (from division by zero) with zeros.
+    P[is.nan(P)] <- 0
+
+    # Compute cumulative sum for each row.
+    cumP <- t(apply(P, 1, cumsum))
+
+    return(cumP)
+}

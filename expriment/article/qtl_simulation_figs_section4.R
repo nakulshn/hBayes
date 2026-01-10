@@ -10,6 +10,7 @@ plot.fig = T
 save.fig = T
 graphics.off()
 source("qtl_util.R")
+library(NPBayes)
 library(zoo)
 library(doParallel)
 library(purrr)

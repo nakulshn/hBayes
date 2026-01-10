@@ -8,17 +8,19 @@ library(tidyverse)
 library(latex2exp )
 library(ggplot2)
 library(tidyverse)
+library(NPBayes)
 save.fig=T
 list.data <- readRDS("MSE_sim.rds")
 list.data2 <- readRDS("MSE_sim2.rds")
+list.data3 <- readRDS("MSE_sim3.rds")
 list2env(list.data,globalenv())
 list2env(list.data2,globalenv())
 #MSE_beta_fb <- MSE_beta_fb.
-Table <- rbind(c(mean(MSE_XB_lasso),mean(MSE_XB_ridge),mean(MSE_XB_fb),mean(MSE_XB_npbayes), mean(MSE_XB_HS)),
-               c(mean(MSE_beta_lasso),mean(MSE_beta_ridge),mean(MSE_beta_fb),mean(MSE_beta_npbayes), mean(MSE_beta_HS)),
-               c(mean(MSE_beta_smooth.lasso),mean(MSE_beta_smooth.ridge),mean(MSE_beta_smooth.fb),mean(MSE_beta_smooth.bayes), mean(MSE_beta_smooth_HS)))
+Table <- rbind(c(mean(MSE_XB_lasso),mean(MSE_XB_ridge),mean(MSE_XB_fb),mean(MSE_XB_npbayes), mean(MSE_XB_HS),mean(MSE_XB_oracle)),
+               c(mean(MSE_beta_lasso),mean(MSE_beta_ridge),mean(MSE_beta_fb),mean(MSE_beta_npbayes), mean(MSE_beta_HS), mean(MSE_beta_oracle)),
+               c(mean(MSE_beta_smooth.lasso),mean(MSE_beta_smooth.ridge),mean(MSE_beta_smooth.fb),mean(MSE_beta_smooth.bayes), mean(MSE_beta_smooth_HS), mean(MSE_beta_smooth.oracle)))
 rownames(Table) <- c("RMSE of $ {\\bf X} \\beta $","RMSE of $ \\beta $","RMSE of $ \\beta $ smooth")
-colnames(Table) <- c("lasso",  "ridge", "mix","hBeta","horseshoe")
+colnames(Table) <- c("lasso",  "ridge", "mix","hBeta","horseshoe","oracle")
 
 print.xtable(xtable(Table, digits=2),type="latex",sanitize.text.function = function(x) x)
 data.RMSEbeta <- data.frame(Lasso = MSE_beta_lasso,
@@ -27,7 +29,8 @@ data.RMSEbeta <- data.frame(Lasso = MSE_beta_lasso,
                             Mix     =MSE_beta_fb,
                             Mr.Ash  = MSE_beta_ash,
                             EMVS    = MSE_beta_EMVS,
-                            horseshoe = MSE_beta_HS)
+                            horseshoe = MSE_beta_HS,
+                            oracle = MSE_beta_oracle)
 data.RMSEbeta <- pivot_longer(data.RMSEbeta, everything(),names_to = "method", values_to = "RSN")
 #if(save.fig)
 #    pdf('beta_rmse_bee.pdf')
@@ -56,7 +59,8 @@ data.RMSEbeta_smooth <- data.frame(Lasso   = MSE_beta_smooth.lasso,
                             Mix     = MSE_beta_smooth.fb,
                             Mr.ash  = MSE_beta_smooth_ash,
                             EMVS    = MSE_beta_smooth_EMVS,
-                            horseshoe = MSE_beta_smooth_HS)
+                            horseshoe = MSE_beta_smooth_HS,
+                            oracle = MSE_beta_smooth.oracle)
 data.RMSEbeta_smooth <- pivot_longer(data.RMSEbeta_smooth, everything(),names_to = "method", values_to = "RSN")
 #if(save.fig)
 #    pdf('beta_rmse_smooth_bee.pdf')
@@ -83,7 +87,8 @@ data.XBbeta <- data.frame(Lasso = MSE_XB_lasso,
                              Mix     = MSE_XB_fb,
                              Mr.ash  = MSE_XB_ash,
                              EMVS    = MSE_XB_EMVS,
-                          horseshoe= MSE_XB_HS)
+                          horseshoe= MSE_XB_HS,
+                          oracle = MSE_XB_oracle)
 data.XBbeta <- pivot_longer(data.XBbeta, everything(),names_to = "method", values_to = "RSN")
 #if(save.fig)
 #    pdf('Xbeta_rmse_bee.pdf')
@@ -104,17 +109,19 @@ if(save.fig)
 
 
 beta_true <- c(0.2,0.2,-0.2)
-Table <- matrix(0, nrow=4, ncol = 3)
-Table_smooth <- matrix(0, nrow=4, ncol = 3)
+Table <- matrix(0, nrow=5, ncol = 3)
+Table_smooth <- matrix(0, nrow=5, ncol = 3)
 qtl_list <- list(beta.qtl.lasso,
                  beta.qtl.ridge,
                  beta.qtl.fb,
-                 beta.qtl.bayes)
+                 beta.qtl.bayes,
+                 beta.qtl.oracle)
 qtl_list_smooth <- list(beta.smooth.qtl.lasso,
                  beta.smooth.qtl.ridge,
                  beta.smooth.qtl.fb,
-                 beta.smooth.qtl.bayes)
-for(i in 1:4){
+                 beta.smooth.qtl.bayes,
+                 beta.smooth.qtl.oracle)
+for(i in 1:5){
 
     for(ii in 1:3){
         Table[i, ii] <- sqrt(mean((qtl_list[[i]][,ii]-beta_true[ii])^2))
@@ -123,9 +130,9 @@ for(i in 1:4){
 }
 
 colnames(Table) <- c("$ {\\bf \\beta}_1$","$ {\\bf \\beta}_2$","$ {\\bf \\beta}_3$")
-rownames(Table) <- c("lasso",  "ridge", "mix","hBeta")
+rownames(Table) <- c("lasso",  "ridge", "mix","hBeta","oracle")
 colnames(Table_smooth) <- c("$ {\\bf \\beta}_1$","$ {\\bf \\beta}_2$","$ {\\bf \\beta}_3$")
-rownames(Table_smooth) <- c("lasso",  "ridge", "mix","hBeta")
+rownames(Table_smooth) <- c("lasso",  "ridge", "mix","hBeta","oracle")
 print.xtable(xtable(Table, digits=2),type="latex",sanitize.text.function = function(x) x)
 print.xtable(xtable(Table_smooth, digits=2),type="latex",sanitize.text.function = function(x) x)
 
