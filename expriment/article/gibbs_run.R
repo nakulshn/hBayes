@@ -95,7 +95,7 @@ legend("topleft",
 # Optional: save to file
 outdir <- file.path(getwd(), "gibbs_out")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
-pngfile <- file.path(outdir, sprintf("cdf_compare_seed_%03d.png", seed))
+pngfile <- file.path(outdir, sprintf("cdf_compare_seed_%03d_lambda_%05f.png", seed, lambda))
 png(pngfile, width = 900, height = 700)
 plot(xfine, F_true, type = "l",
      xlab = "x", ylab = "CDF",
@@ -139,7 +139,7 @@ gibbs_out$beta.samples = beta.samples
 # ---------------------------
 outdir <- file.path(getwd(), "gibbs_out")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
-outfile <- file.path(outdir, sprintf("gibbs_out_seed_%03d.rds", seed))
+outfile <- file.path(outdir, sprintf("gibbs_out_seed_%03d_lambda_%05f.rds", seed, lambda))
 
 saveRDS(
   gibbs_out,
