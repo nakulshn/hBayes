@@ -65,54 +65,54 @@ X <- matrix(rnorm(n * p, mean = 0, sd = sqrt(1 / n)), n, p)
 #   sd = 1.0
 # )
 
-# # ---------------------------
-# # Generate betas: truncated continuous spike-and-slab Seeds 1, 2, 3
-# # ---------------------------
-# pi_slab <- 0.5
-# tau0 <- 0.04
-# tau1 <- 1.0
-
-# mix <- rbinom(p, 1, pi_slab)
-# beta <- numeric(p)
-
-# beta[mix == 0] <- rtruncnorm(
-#   sum(mix == 0),
-#   a = -3, b = 3,
-#   mean = 0,
-#   sd = tau0
-# )
-
-# beta[mix == 1] <- rtruncnorm(
-#   sum(mix == 1),
-#   a = -3, b = 3,
-#   mean = 0,
-#   sd = tau1
-# )
-
-
 # ---------------------------
-# Generate betas: bimodal Seed 4,5,6
+# Generate betas: truncated continuous spike-and-slab Seeds 1, 2, 3
 # ---------------------------
-pi_left_mode <- 0.5
-tau0 <- 0.2
-tau1 <- 0.2
+pi_slab <- 0.5
+tau0 <- 0.04
+tau1 <- 1.0
 
-mix <- rbinom(p, 1, pi_left_mode)
+mix <- rbinom(p, 1, pi_slab)
 beta <- numeric(p)
 
 beta[mix == 0] <- rtruncnorm(
   sum(mix == 0),
   a = -3, b = 3,
-  mean = -1.5,
+  mean = 0,
   sd = tau0
 )
 
 beta[mix == 1] <- rtruncnorm(
   sum(mix == 1),
   a = -3, b = 3,
-  mean = 1.5,
+  mean = 0,
   sd = tau1
 )
+
+
+## ---------------------------
+## Generate betas: bimodal Seed 4,5,6
+## ---------------------------
+#pi_left_mode <- 0.5
+#tau0 <- 0.2
+#tau1 <- 0.2
+#
+#mix <- rbinom(p, 1, pi_left_mode)
+#beta <- numeric(p)
+#
+#beta[mix == 0] <- rtruncnorm(
+#  sum(mix == 0),
+#  a = -3, b = 3,
+#  mean = -1.5,
+#  sd = tau0
+#)
+#
+#beta[mix == 1] <- rtruncnorm(
+#  sum(mix == 1),
+#  a = -3, b = 3,
+#  mean = 1.5,
+#  sd = tau1
+#)
 
 
 # ---------------------------
