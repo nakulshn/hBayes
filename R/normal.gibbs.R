@@ -1,4 +1,69 @@
 
+stable.softmax <- function(z) {
+  z <- z - max(z)
+  ez <- exp(z)
+  ez / sum(ez)
+}
+
+project_hist_to_grid <- function(a_vec, w_bin, grid) {
+  stopifnot(is.numeric(a_vec), is.numeric(w_bin), is.numeric(grid))
+  I <- length(w_bin)
+  K <- length(grid)
+  stopifnot(length(a_vec) == I + 1)
+  stopifnot(isTRUE(all(diff(a_vec) > 0)))
+  stopifnot(isTRUE(all(diff(grid) > 0)))
+
+  # Histogram density per bin
+  bin_len <- diff(a_vec)
+  f_bin <- w_bin / bin_len
+
+  # Voronoi cell boundaries around grid points
+  b <- numeric(K + 1)
+  b[1] <- a_vec[1]
+  b[K + 1] <- a_vec[length(a_vec)]
+  if (K > 1) b[2:K] <- 0.5 * (grid[1:(K-1)] + grid[2:K])
+
+  # Mass in each cell = integral of histogram density over that cell
+  w_grid <- numeric(K)
+
+  for (k in 1:K) {
+    L <- b[k]; R <- b[k + 1]
+    if (R <= L) next
+
+    # bins overlapping [L, R]
+    iL <- max(1, findInterval(L, a_vec, rightmost.closed = TRUE))
+    iR <- min(I, findInterval(R, a_vec, rightmost.closed = TRUE))
+
+    m <- 0
+    for (i in iL:iR) {
+      overlap <- max(0, min(R, a_vec[i+1]) - max(L, a_vec[i]))
+      if (overlap > 0) m <- m + f_bin[i] * overlap
+    }
+    w_grid[k] <- m
+  }
+
+  # normalize (numerical safety)
+  s <- sum(w_grid)
+  if (s <= 0) stop("Projection produced zero mass; check grid/bounds.")
+  w_grid / s
+}
+
+cdf_from_w_grid <- function(w, grid, x) {
+  cw <- cumsum(w)
+  idx <- findInterval(x, grid)   # 0..K
+  out <- numeric(length(x))
+  out[idx > 0] <- cw[idx[idx > 0]]
+  out
+}
+
+w1_cdf_distance <- function(beta_true, w_grid, grid, bounds = c(-3, 3), nbins = 10000) {
+  xfine <- seq(bounds[1], bounds[2], length.out = nbins)
+  dx <- xfine[2] - xfine[1]
+  F_true <- ecdf(beta_true)(xfine)
+  F_est  <- cdf_from_w_grid(w_grid, grid, xfine)
+  sum(abs(F_true - F_est)) * dx
+}
+
 
 
  normalloglik<- function( res, sigma)
@@ -267,7 +332,8 @@ gibbs.normal.fixed.sigma           <- function(n.gibbs,
                                                a.int,
                                                L,
                                                beta,
-                                               cpp = T){
+                                               cpp = T,
+                                               beta.true=NULL){
 
 
 
@@ -281,6 +347,15 @@ gibbs.normal.fixed.sigma           <- function(n.gibbs,
     a.vec	<- seq(a.int[1],
                  a.int[2],
                  length = I + 1)
+
+    # Support points for the discrete prior (use bin midpoints)
+    x_support <- 0.5 * (a.vec[1:I] + a.vec[2:(I+1)])
+    bounds <- range(a.int)
+
+    # Running mean of prior probabilities (not logs)
+    w_mean <- rep(0, I)
+    n_mean <- 0
+
 
     #truncate beta
     beta[beta< a.int[1]] = a.int[1] + 1e-8
@@ -298,6 +373,9 @@ gibbs.normal.fixed.sigma           <- function(n.gibbs,
 
     pi.gibbs[1,]	<- log( (c(sum(beta.gibbs[1,] < a.vec[2]),diff(rank(c(a.vec[2:I],100,beta.gibbs[1,]))[1:I] -
                                                                     (1:I))) + 100/I) / 900)
+    w.gibbs <- array(dim = c(n.gibbs, I))
+    w.gibbs[1,] <- stable.softmax(pi.gibbs[1,])
+
     delta.gibbs[1, ] <- beta.ind
     Xbeta	<- X %*% beta.gibbs[1,]
 
@@ -356,11 +434,28 @@ gibbs.normal.fixed.sigma           <- function(n.gibbs,
         ##
         nvec <- table(factor(beta.ind, levels=1:I))
         pi.gibbs[g,] <- polya.gibs(nvec, tree.data)
+        w.gibbs[g,]  <- stable.softmax(pi.gibbs[g,])
+        # ---- running mean of the sampled prior + W1(CDF) print ----
+        if ((!is.null(beta.true)) && (g > 200)) {
+        
+        w_g <- stable.softmax(pi.gibbs[g,])   # convert log-weights -> probs
+        n_mean <- n_mean + 1
+        w_mean <- w_mean + (w_g - w_mean) / n_mean  # online mean
+        if (g %% 100 == 1) {
+            grid65 <- seq(a.int[1], a.int[2], length.out = 65)
+            w_grid <- project_hist_to_grid(a.vec, w_mean, grid65)
+            w1 <- w1_cdf_distance(beta.true, w_grid, grid65, bounds = a.int, nbins = 10000)
+            cat(sprintf("Iter %d: W1(CDF) after projecting PT->grid = %.6f\n", g, w1))
+            }
+
+        }
+
     }
     return(list(a.vec=  a.vec,
                 pi.gibbs = pi.gibbs,
+                w.gibbs=w.gibbs,
                 beta.gibbs = beta.gibbs,
-                delta.gibbs = delta.gibbs))
+                delta.gibbs = delta.gibbs, w_mean=w_mean))
 
 }
 

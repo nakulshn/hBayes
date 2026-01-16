@@ -5,7 +5,7 @@ library(CVXR)     # required by spline.optimize()
 
 source("./Gibbs.R")  # <-- contains Gibbs(), stable.softmax(), etc.
 
-# ---- CLI args: --seed, --runid, --sim, --scenario ----
+# ---- CLI args: --seed, --sim, --scenario ----
 args <- commandArgs(trailingOnly = TRUE)
 
 get_arg <- function(flag, default = NULL) {
@@ -15,117 +15,98 @@ get_arg <- function(flag, default = NULL) {
 }
 
 seed   <- as.integer(get_arg("--seed", 1))
-runid  <- as.integer(get_arg("--runid", seed))
 
-sim_id      <- as.integer(get_arg("--sim", 1))
-scenario_id <- as.integer(get_arg("--scenario", 2))
 
 # ---- Gibbs tuning args (optional) ----
 K_grid            <- as.integer(get_arg("--K", 65))
-lambda            <- as.numeric(get_arg("--lambda", 3e-3))
+lambda            <- as.numeric(get_arg("--lambda", 1e-3))
 eta_w             <- as.numeric(get_arg("--eta_w", 1.0))
-gibbs_inner_iters <- as.integer(get_arg("--gibbs_inner", 100))
-burn_iters        <- as.integer(get_arg("--burn", 200))
 max_iter          <- as.integer(get_arg("--max_iter", 10000))
-save_iter         <- as.integer(get_arg("--save_iter", 100))
-print_iter         <- as.integer(get_arg("--print_iter", 100))
-
+gibbs_inner_iters <- as.integer(get_arg("--gibbs_inner_iters", 100))
 cat("Gibbs runner:",
-    "seed =", seed,
-    "runid =", runid,
-    "sim =", sim_id,
-    "scenario =", scenario_id, "\n")
+    "seed =", seed, "\n")
+
 
 # ---------------------------
-# Locate PT output (matches your PT script)
+# Load data
 # ---------------------------
-run_dir <- file.path(getwd(), "oracle_section4_out", paste0("run_", runid, "_seed_", seed))
-run_rds_path <- file.path(run_dir, "oracle_section4_thin_results.rds")
-
-if (!file.exists(run_rds_path)) {
-  stop("Could not find PT results at:\n  ", run_rds_path,
-       "\nDid you run PT with the same --seed/--runid?")
+datadir <- file.path(getwd(), "data")
+datafile <- file.path(datadir, sprintf("data_seed_%03d.rds", seed))
+if (!file.exists(datafile)) {
+  stop("Data file not found: ", datafile, "\n",
+       "Did you generate it with the same --seed and datadir?")
 }
 
-obj <- readRDS(run_rds_path)
+d <- readRDS(datafile)
 
-# ---------------------------
-# Pull sim/scenario data
-# ---------------------------
-scen_name <- paste0("scenario", scenario_id)
+# Expect these fields from your generator:
+X <- d$X
+y <- d$y
 
-if (sim_id < 1 || sim_id > length(obj$results)) {
-  stop("sim_id out of range. obj$results has ", length(obj$results), " sims.")
-}
+sigma <- d$sigma_true
+beta_true <- d$beta_true
 
-scen <- obj$results[[sim_id]]$scenario[[scen_name]]
-if (is.null(scen)) stop("Could not find requested sim/scenario in saved RDS.")
+cat("Loaded:", datafile, "\n",
+    "n =", nrow(X), "p =", ncol(X), "sigma =", sigma, "\n")
 
-X <- obj$X
-y <- scen$y
-
-
-# If you ever change sigma in PT, you can store it in the scenario list.
-# For now PT uses sigma_true <- 1 (hard-coded).
-sigma <- 1
-
-# Use same bounds as PT/EBflow (or let CLI override if you want)
 bounds <- c(-3, 3)
 
 # ---------------------------
-# Theta grid
+# grid
 # ---------------------------
-Theta <- seq(bounds[1], bounds[2], length.out = K_grid)
+grid <- seq(bounds[1], bounds[2], length.out = K_grid)
 
-# Optional init:
-# - w.init: start uniform (default inside Gibbs)
-# - phi.init: could start at ridge or lse from PT; ridge tends to be stable
-# phi_init <- scen$beta_ridge
-# Ensure it lives on the grid (optional). If you want EXACT grid states:
-# phi_init <- Theta[findInterval(phi_init, Theta, all.inside = TRUE)]
 
 # ---------------------------
 # Run Gibbs
 # ---------------------------
-set.seed(seed + runid)
+set.seed(seed + 100)
 
 gibbs_out <- Gibbs(
   X = X,
   y = y,
   sigma = sigma,
-  Theta = Theta,
+  grid = grid,
   lambda = lambda,
   eta.w = eta_w,
-  gibbs.inner.iters = gibbs_inner_iters,
-  w.init = NULL,
-  phi.init = NULL,
-  burn.iters = burn_iters,
-  w.true = NULL,
+  beta.true = beta_true,   # <-- NEW
+  bounds = bounds,         # <-- NEW (for W1 CDF range)
   max.iter = max_iter,
-  save.iter = save_iter,
-  print.iter = print_iter,
-  verbose = TRUE
+  verbose = TRUE,
+  gibbs.inner.iters = gibbs_inner_iters
 )
 
-# Attach meta for provenance
-gibbs_out$meta <- list(
-  run_dir = run_dir,
-  run_rds_path = run_rds_path,
-  seed = seed,
-  runid = runid,
-  sim_id = sim_id,
-  scenario_id = scenario_id,
-  n = nrow(X),
-  p = ncol(X),
-  bounds = bounds,
-  K = K_grid,
-  lambda = lambda,
-  eta_w = eta_w,
-  gibbs_inner_iters = gibbs_inner_iters,
-  burn_iters = burn_iters,
-  max_iter = max_iter,
-  save_iter = save_iter
-  )
+# ---- Plot CDFs: final w vs empirical beta_true ----
+w_final <- gibbs_out$w
+
+xfine <- seq(bounds[1], bounds[2], length.out = 10000)
+F_true <- ecdf(beta_true)(xfine)
+F_est  <- cdf_from_w_grid(w_final, grid, xfine)
+
+plot(xfine, F_true, type = "l",
+     xlab = "x", ylab = "CDF",
+     main = sprintf("CDFs after %d iters (seed=%d)", max_iter, seed))
+lines(xfine, F_est, lty = 2)
+
+legend("topleft",
+       legend = c("Empirical CDF (true betas)", "CDF from final w (grid)"),
+       lty = c(1, 2), bty = "n")
+
+# Optional: save to file
+outdir <- file.path(getwd(), "gibbs_out")
+dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
+pngfile <- file.path(outdir, sprintf("cdf_compare_seed_%03d.png", seed))
+png(pngfile, width = 900, height = 700)
+plot(xfine, F_true, type = "l",
+     xlab = "x", ylab = "CDF",
+     main = sprintf("CDFs after %d iters (seed=%d)", max_iter, seed))
+lines(xfine, F_est, lty = 2)
+legend("topleft",
+       legend = c("Empirical CDF (true betas)", "CDF from final w (grid)"),
+       lty = c(1, 2), bty = "n")
+dev.off()
+
+cat("Saved CDF plot:", pngfile, "\n")
 
 
 
@@ -135,30 +116,34 @@ tmp.out <- Gibbs(
     X = X,
     y = y,
     sigma = sigma,
-    Theta = Theta,
+    grid = grid,
     lambda = 0,
     eta.w = 1.0,
     gibbs.inner.iters = 1000000,
     w.init = w,
     phi.init = phi,
     burn.iters = 0,
-    w.true = NULL,
-    max.iter = 100000,
-    save.iter = 1,
-    print.iter = 1000,
+    beta.true = beta_true,   # <-- NEW
+    bounds = bounds,         # <-- NEW (for W1 CDF range)
+    max.iter = 200000,
     verbose = TRUE
   )
 
-beta.samples = sapply(seq(1,100001,1), function(it) tmp.out$hist[[it]]$phi)
+beta.samples = sapply(seq(1,200001,1), function(it) tmp.out$hist[[it]]$phi)
 gibbs_out$beta.samples = beta.samples
 
+
+
 # ---------------------------
-# Save output in run folder
+# Save output (filename includes seed)
 # ---------------------------
-out_path <- file.path(
-  run_dir,
-  sprintf("gibbs_out_run%s_seed%d_lambda%.3f.rds", runid, seed, lambda)
+outdir <- file.path(getwd(), "gibbs_out")
+dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
+outfile <- file.path(outdir, sprintf("gibbs_out_seed_%03d.rds", seed))
+
+saveRDS(
+  gibbs_out,
+  file = outfile
 )
 
-saveRDS(gibbs_out, out_path)
-cat("Saved Gibbs output to:\n  ", out_path, "\n", sep = "")
+cat("Saved:", outfile, "\n")

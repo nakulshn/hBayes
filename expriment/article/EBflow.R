@@ -51,8 +51,8 @@ discrete.der = function(K,delta) {
   return(D)
 }
 
-gradient.flow.EB.init <- function(X, y, sigma, Theta, eta.w, eta.phi, max.iter, tausq.scale, w.init, phi.init, precondition, w.lower.bound) {
-  n = nrow(X); p = ncol(X); K = length(Theta)
+gradient.flow.EB.init <- function(X, y, sigma, grid, eta.w, eta.phi, max.iter, tausq.scale, w.init, phi.init, precondition, w.lower.bound) {
+  n = nrow(X); p = ncol(X); K = length(grid)
   # Set tau
   X.svd = svd(X,nv=p)
   max.sing = max(X.svd$d)
@@ -120,13 +120,33 @@ gradient.flow.EB.init <- function(X, y, sigma, Theta, eta.w, eta.phi, max.iter, 
               w.init=w.init, phi.init=phi.init))
 }
 
+
+
+# ---- W1(CDF) between true empirical betas and current discrete w on grid ----
+cdf_from_w_grid <- function(w, grid, x) {
+  cw <- cumsum(w)
+  idx <- findInterval(x, grid)   # 0..K
+  out <- numeric(length(x))
+  out[idx > 0] <- cw[idx[idx > 0]]
+  out
+}
+
+w1_cdf_distance <- function(beta_true, w, grid, bounds = c(-3, 3), nbins = 10000) {
+  xfine <- seq(bounds[1], bounds[2], length.out = nbins)
+  dx <- xfine[2] - xfine[1]
+  F_true <- ecdf(beta_true)(xfine)
+  F_est  <- cdf_from_w_grid(w, grid, xfine)
+  sum(abs(F_true - F_est)) * dx
+}
+
+
 # Main EBflow algorithm
 #
 # Inputs:
 # X -- n x p design matrix 
 # y -- response vector, length n
 # sigma -- noise std dev
-# Theta -- prior support points, length K
+# grid -- prior support points, length K
 # lambda -- spline smoothing penalty size
 #
 # Algorithm parameters:
@@ -140,7 +160,7 @@ gradient.flow.EB.init <- function(X, y, sigma, Theta, eta.w, eta.phi, max.iter, 
 #        tau^2 = tausq.scale * sigma^2 / ||X||_op^2
 #        If NULL, will be initialized to default tausq.scale = 0.5
 # w.init -- initial prior weights
-#        Default: uniform over support points Theta
+#        Default: uniform over support points grid
 # w.lower.bound -- lower bound for estimated prior weights
 # phi.init -- initialization for Langevin dynamics
 #        Default: all-0's vector
@@ -156,21 +176,21 @@ gradient.flow.EB.init <- function(X, y, sigma, Theta, eta.w, eta.phi, max.iter, 
 #
 # Returns:
 # w -- final estimated prior weights, length K
-#      (correpsonding to support points Theta)
+#      (correpsonding to support points grid)
 # hist -- saved prior weights w and samples phi every save.iter iterations
 # sigma -- noise std dev (same as input)
 # tau -- std dev in reparametrization by phi
 # eta.w -- vector of prior update step sizes per iteration
 # eta.phi -- vector of Langevin step sizes per iteration
-gradient.flow.EB <- function(X, y, sigma, Theta, lambda=1e-3,
+gradient.flow.EB <- function(X, y, sigma, grid, lambda=1e-3,
         eta.w=NULL, eta.phi=NULL, tausq.scale=NULL,
         w.init=NULL, w.lower.bound=1e-5, phi.init=NULL,
-        max.iter=10000, precondition=TRUE, save.iter=100, 
-        verbose=TRUE, w.true=NULL, print.iter=100) {
+        max.iter=10000, precondition=TRUE,
+        verbose=TRUE, print.iter=100, beta.true = NULL, bounds = c(-3, 3)) {
   # Initialize default algorithm parameters
-  K = length(Theta)
+  K = length(grid)
   p = ncol(X)
-  inits = gradient.flow.EB.init(X, y, sigma, Theta, eta.w, eta.phi, max.iter, tausq.scale, w.init, phi.init, precondition, w.lower.bound)
+  inits = gradient.flow.EB.init(X, y, sigma, grid, eta.w, eta.phi, max.iter, tausq.scale, w.init, phi.init, precondition, w.lower.bound)
   tau=inits$tau; eta.w=inits$eta.w; eta.phi=inits$eta.phi
   XSinvX=inits$XSinvX; XSinvy=inits$XSinvy
   eta.phi.scale=inits$eta.phi.scale; Q=inits$Q; Q2=inits$Q2
@@ -183,39 +203,36 @@ gradient.flow.EB <- function(X, y, sigma, Theta, lambda=1e-3,
   w = w.init
   phi = phi.init
   # For smoothing spline
-  delta = Theta[2]-Theta[1]
+  delta = grid[2]-grid[1]
   D = discrete.der(K,delta)
   M = (lambda/delta)*t(D)%*%D
   # For first iteration
-  centered = rep(1,K) %o% phi - Theta %o% rep(1,p)
+  centered = rep(1,K) %o% phi - grid %o% rep(1,p)
   log.density = dnorm(centered, sd=tau, log=TRUE)
   t.start = Sys.time()
   for (iter in 1:(max.iter+1)) {
-    if ((iter %% save.iter == 1) | (save.iter == 1)) {
-      # Save history, print change in w
-      t.curr = Sys.time()
-      hist[[iter]] = list(w = w, phi = phi, time = t.curr - t.start)
-    }
+    # Save history, print change in w
+    t.curr = Sys.time()
+    hist[[iter]] = list(w = w, phi = phi, time = t.curr - t.start)
     if ((iter %% print.iter == 1) | (print.iter == 1)) {
       if (verbose) {
-        if (is.null(w.true)) { err = NA }
-        else { err = sum(abs(w-w.true))/2 }
-        if (precondition) {
-          print(sprintf("Iteration: %d, eta.w: %f, eta.phi: %f (pre-conditioned), TV from truth: %f", iter, eta.w[iter], eta.phi[iter], err))
+        if (!is.null(beta.true)) {
+          err <- w1_cdf_distance(beta.true, w, grid, bounds = bounds, nbins = 10000)
+          print(sprintf("Iteration: %d, W1(CDF) from truth: %f", iter, err))
         } else {
-          print(sprintf("Iteration: %d, eta.w: %f, eta.phi: %f, TV from truth: %f", iter, eta.w[iter], eta.phi[iter], err))
+          print(sprintf("Iteration: %d", iter))
         }
       }
     }
-    # Precompute Gaussian density at coordinates of phi - Theta
-    if (max(abs(phi)) > 100 * max(abs(Theta))) {
+    # Precompute Gaussian density at coordinates of phi - grid
+    if (max(abs(phi)) > 100 * max(abs(grid))) {
       print("WARNING: Diverging phi iterates, consider reducing eta.phi")
     }
     # Take one Langevin step in phi
     phi = langevin.step(phi, centered, log.density, w, tau, XSinvX, XSinvy,
 		    eta.phi[iter]*eta.phi.scale, Q, Q2)
     # Update prior weights w
-    centered = rep(1,K) %o% phi - Theta %o% rep(1,p)
+    centered = rep(1,K) %o% phi - grid %o% rep(1,p)
     log.density = dnorm(centered, sd=tau, log=TRUE)
     w = prior.step(w, log.density, M, eta.w[iter])
     w[which(w<w.lower.bound)] = w.lower.bound
@@ -230,18 +247,18 @@ gradient.flow.EB <- function(X, y, sigma, Theta, lambda=1e-3,
 # Inputs:
 # w -- estimated prior weights, length K
 # phi -- Langevin samples, p x n.iters
-# Theta -- prior support points, length K
+# grid -- prior support points, length K
 # tau -- std dev in reparametrization by phi
 #
 # Returns posterior mean of theta, length p
-posterior.mean = function(w,phi,Theta,tau) {
-  p = nrow(phi); niters = ncol(phi); p.tot = niters*p; K = length(Theta)
+posterior.mean = function(w,phi,grid,tau) {
+  p = nrow(phi); niters = ncol(phi); p.tot = niters*p; K = length(grid)
   dim(phi) = p.tot
-  centered = rep(1,K) %o% phi - Theta %o% rep(1,p.tot)
+  centered = rep(1,K) %o% phi - grid %o% rep(1,p.tot)
   log.density.w = dnorm(centered, sd=tau, log=TRUE) + log(w)
   col.max = apply(log.density.w,2,max)
   density.w = t(exp(t(log.density.w)-col.max))
-  theta.mean = colMeans(Theta*density.w)/colMeans(density.w)
+  theta.mean = colMeans(grid*density.w)/colMeans(density.w)
   dim(theta.mean) = c(p,niters)
   return(rowMeans(theta.mean))
 }
