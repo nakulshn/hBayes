@@ -1,30 +1,30 @@
 Rscript oracle_section4.R --seed 1
-Rscript gibbs_run.R --seed 1 --max_iter 200000 --lambda 0
-Rscript gibbs_run.R --seed 1 --max_iter 200000 --lambda 0.001
-Rscript ebflow_run.R --seed 1 --max_iter 200000 --lambda 0
-Rscript ebflow_run.R --seed 1 --max_iter 200000 --lambda 0.001
+Rscript gibbs_run.R --seed 1 --max_iter 400000 --lambda 0
+Rscript gibbs_run.R --seed 1 --max_iter 400000 --lambda 0.001
+Rscript ebflow_run.R --seed 1 --max_iter 400000 --lambda 0
+Rscript ebflow_run.R --seed 1 --max_iter 400000 --lambda 0.001
 Rscript oracle_section4.R --seed 2
-Rscript gibbs_run.R --seed 2 --max_iter 200000 --lambda 0
-Rscript gibbs_run.R --seed 2 --max_iter 200000 --lambda 0.001
-Rscript ebflow_run.R --seed 2 --max_iter 200000 --lambda 0
-Rscript ebflow_run.R --seed 2 --max_iter 200000 --lambda 0.001
+Rscript gibbs_run.R --seed 2 --max_iter 400000 --lambda 0
+Rscript gibbs_run.R --seed 2 --max_iter 400000 --lambda 0.001
+Rscript ebflow_run.R --seed 2 --max_iter 400000 --lambda 0
+Rscript ebflow_run.R --seed 2 --max_iter 400000 --lambda 0.001
 Rscript oracle_section4.R --seed 3
-Rscript gibbs_run.R --seed 3 --max_iter 200000 --lambda 0
-Rscript gibbs_run.R --seed 3 --max_iter 200000 --lambda 0.001
-Rscript ebflow_run.R --seed 3 --max_iter 200000 --lambda 0
-Rscript ebflow_run.R --seed 3 --max_iter 200000 --lambda 0.001
+Rscript gibbs_run.R --seed 3 --max_iter 400000 --lambda 0
+Rscript gibbs_run.R --seed 3 --max_iter 400000 --lambda 0.001
+Rscript ebflow_run.R --seed 3 --max_iter 400000 --lambda 0
+Rscript ebflow_run.R --seed 3 --max_iter 400000 --lambda 0.001
 Rscript oracle_section4.R --seed 4
-Rscript gibbs_run.R --seed 4 --max_iter 200000 --lambda 0
-Rscript gibbs_run.R --seed 4 --max_iter 200000 --lambda 0.001
-Rscript ebflow_run.R --seed 4 --max_iter 200000 --lambda 0
-Rscript ebflow_run.R --seed 4 --max_iter 200000 --lambda 0.001
+Rscript gibbs_run.R --seed 4 --max_iter 400000 --lambda 0
+Rscript gibbs_run.R --seed 4 --max_iter 400000 --lambda 0.001
+Rscript ebflow_run.R --seed 4 --max_iter 400000 --lambda 0
+Rscript ebflow_run.R --seed 4 --max_iter 400000 --lambda 0.001
 Rscript oracle_section4.R --seed 5
-Rscript gibbs_run.R --seed 5 --max_iter 200000 --lambda 0
-Rscript gibbs_run.R --seed 5 --max_iter 200000 --lambda 0.001
-Rscript ebflow_run.R --seed 5 --max_iter 200000 --lambda 0
-Rscript ebflow_run.R --seed 5 --max_iter 200000 --lambda 0.001
+Rscript gibbs_run.R --seed 5 --max_iter 400000 --lambda 0
+Rscript gibbs_run.R --seed 5 --max_iter 400000 --lambda 0.001
+Rscript ebflow_run.R --seed 5 --max_iter 400000 --lambda 0
+Rscript ebflow_run.R --seed 5 --max_iter 400000 --lambda 0.001
 Rscript oracle_section4.R --seed 6
-Rscript gibbs_run.R --seed 6 --max_iter 200000 --lambda 0
-Rscript gibbs_run.R --seed 6 --max_iter 200000 --lambda 0.001
-Rscript ebflow_run.R --seed 6 --max_iter 200000 --lambda 0
-Rscript ebflow_run.R --seed 6 --max_iter 200000 --lambda 0.001
+Rscript gibbs_run.R --seed 6 --max_iter 400000 --lambda 0
+Rscript gibbs_run.R --seed 6 --max_iter 400000 --lambda 0.001
+Rscript ebflow_run.R --seed 6 --max_iter 400000 --lambda 0
+Rscript ebflow_run.R --seed 6 --max_iter 400000 --lambda 0.001

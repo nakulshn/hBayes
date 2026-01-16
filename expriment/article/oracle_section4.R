@@ -1,6 +1,6 @@
 library(NPBayes)
 library(glmnet)
-source("C:/Users/nakul/Downloads/hBayes/R/normal.gibbs.R")
+source("/home/ubuntu/hBayes/R/normal.gibbs.R")
 
 # ---- CLI args: --seed, --sim, --scenario ----
 args <- commandArgs(trailingOnly = TRUE)

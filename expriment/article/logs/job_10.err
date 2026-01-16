@@ -1,0 +1,5 @@
+Loading required package: Matrix
+Loaded glmnet 4.1-10
+Error: Data file not found: /home/ubuntu/hBayes/expriment/article/data/data_seed_004.rds
+Did you generate it with the same --seed and datadir?
+Execution halted
