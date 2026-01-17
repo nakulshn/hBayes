@@ -116,6 +116,31 @@ beta[mix == 1] <- rtruncnorm(
 
 
 # ---------------------------
+# Generate betas: bimodal Seed 4,5,6
+# ---------------------------
+pi_left_mode <- 0.5
+tau0 <- 0.5
+tau1 <- 0.5
+
+mix <- rbinom(p, 1, pi_left_mode)
+beta <- numeric(p)
+
+beta[mix == 0] <- rtruncnorm(
+  sum(mix == 0),
+  a = -3, b = 3,
+  mean = -1.5,
+  sd = tau0
+)
+
+beta[mix == 1] <- rtruncnorm(
+  sum(mix == 1),
+  a = -3, b = 3,
+  mean = 1.5,
+  sd = tau1
+)
+
+
+# ---------------------------
 # Generate y
 # ---------------------------
 y <- as.numeric(X %*% beta + sigma_true * rnorm(n))

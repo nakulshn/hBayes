@@ -60,7 +60,7 @@ grid <- seq(bounds[1], bounds[2], length.out = K_grid)
 # ---------------------------
 # Run Gibbs
 # ---------------------------
-set.seed(seed + 100)
+set.seed(seed + 101)
 
 gibbs_out <- Gibbs(
   X = X,
