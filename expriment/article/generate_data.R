@@ -33,7 +33,7 @@ sigma_true <- 1.0
 # ---------------------------
 # Generate X -- iid N(0, 1/n) entries
 # ---------------------------
-X <- matrix(rnorm(n * p, mean = 0, sd = sqrt(1 / n)), n, p)
+# X <- matrix(rnorm(n * p, mean = 0, sd = sqrt(1 / n)), n, p)
 
 
 
@@ -41,17 +41,17 @@ X <- matrix(rnorm(n * p, mean = 0, sd = sqrt(1 / n)), n, p)
 # # Generate X -- iid multivariate Gaussian rows, with correlated coordinates.
 # # ---------------------------
 
-# rho <- 0.7  # correlation level
+rho <- 0.7  # correlation level
 
-# # Toeplitz covariance
-# Sigma <- toeplitz(rho^(0:(p - 1)))
+# Toeplitz covariance
+Sigma <- toeplitz(rho^(0:(p - 1)))
 
-# # Generate iid rows
-# X <- MASS::mvrnorm(
-#   n = n,
-#   mu = rep(0, p),
-#   Sigma = Sigma
-# ) / sqrt(n)
+# Generate iid rows
+X <- MASS::mvrnorm(
+  n = n,
+  mu = rep(0, p),
+  Sigma = Sigma
+) / sqrt(n)
 
 
 # # ---------------------------
@@ -65,10 +65,10 @@ X <- matrix(rnorm(n * p, mean = 0, sd = sqrt(1 / n)), n, p)
 #   sd = 1.0
 # )
 
-# # ---------------------------
-# # Generate betas: truncated continuous spike-and-slab Seeds 1, 2, 3
-# # ---------------------------
-# pi_slab <- 0.5
+# ---------------------------
+# Generate betas: truncated continuous spike-and-slab Seeds 1, 2, 3
+# ---------------------------
+# pi_slab <- 0.2
 # tau0 <- 0.04
 # tau1 <- 1.0
 
@@ -90,9 +90,9 @@ X <- matrix(rnorm(n * p, mean = 0, sd = sqrt(1 / n)), n, p)
 # )
 
 
-# ---------------------------
-# Generate betas: bimodal Seed 4,5,6
-# ---------------------------
+# # ---------------------------
+# # Generate betas: bimodal Seed 4,5,6
+# # ---------------------------
 pi_left_mode <- 0.5
 tau0 <- 0.5
 tau1 <- 0.5
@@ -115,29 +115,6 @@ beta[mix == 1] <- rtruncnorm(
 )
 
 
-# ---------------------------
-# Generate betas: bimodal Seed 4,5,6
-# ---------------------------
-pi_left_mode <- 0.5
-tau0 <- 0.5
-tau1 <- 0.5
-
-mix <- rbinom(p, 1, pi_left_mode)
-beta <- numeric(p)
-
-beta[mix == 0] <- rtruncnorm(
-  sum(mix == 0),
-  a = -3, b = 3,
-  mean = -1.5,
-  sd = tau0
-)
-
-beta[mix == 1] <- rtruncnorm(
-  sum(mix == 1),
-  a = -3, b = 3,
-  mean = 1.5,
-  sd = tau1
-)
 
 
 # ---------------------------
