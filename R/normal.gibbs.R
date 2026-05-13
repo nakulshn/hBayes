@@ -581,3 +581,127 @@ gibbs.normal.permute.beta          <- function(n.gibbs,
 
 
 
+stable.softmax <- function(z) {
+  z <- z - max(z)
+  ez <- exp(z)
+  ez / sum(ez)
+}
+
+# Normal loglik up to additive constant
+norm_loglik_from_SSE <- function(SSE, sigma) -0.5 * SSE / (sigma^2)
+
+# One MH sweep of random-swap updates (oracle kernel)
+permute_mh_beta_normal <- function(Y, X, sigma, Xbeta, beta, force_swap = FALSE) {
+  p <- ncol(X)
+
+  res <- as.numeric(Y - Xbeta)
+  SSE <- sum(res^2)
+  loglik <- -0.5 * SSE / (sigma^2)
+
+  acc_vec <- numeric(p)
+
+  for (i in 1:p) {
+    if (force_swap) {
+      j <- sample.int(p - 1, 1)
+      if (j >= i) j <- j + 1
+    } else {
+      j <- sample.int(p, 1)
+    }
+
+    if (j != i) {
+      db <- beta[j] - beta[i]
+      v  <- X[, i] - X[, j]
+      d  <- db * v
+
+      srd <- sum(res * d)
+      dd  <- sum(d * d)
+      SSE_star <- SSE - 2 * srd + dd
+      loglik_star <- -0.5 * SSE_star / (sigma^2)
+
+      if (log(runif(1)) < (loglik_star - loglik)) {
+        tmp <- beta[j]; beta[j] <- beta[i]; beta[i] <- tmp
+
+        Xbeta <- Xbeta + d
+        res   <- res - d
+        SSE   <- SSE_star
+        loglik <- loglik_star
+
+        acc_vec[i] <- acc_vec[i] + 1
+      }
+    } else {
+      acc_vec[i] <- acc_vec[i] + 1
+    }
+  }
+
+  list(Xbeta = Xbeta, beta = beta, acc_vec = acc_vec, SSE = SSE)
+}
+gibbs.normal.permute.oracle <- function(n.gibbs,
+                                        Y, X, sigma, beta,
+                                        quite = TRUE,
+                                        burn_in = 0,
+                                        print_every = 100,
+                                        check_every = 200,
+                                        beta_true = NULL,
+                                        force_swap = FALSE) {
+  p <- ncol(X)
+  n <- nrow(X)
+
+  beta.gibbs <- matrix(NA_real_, n.gibbs, p)
+  beta.curr  <- as.numeric(beta)
+  Xbeta      <- as.numeric(X %*% beta.curr)
+
+  # Precompute true signal if provided
+  Xbeta_true <- if (!is.null(beta_true)) as.numeric(X %*% beta_true) else NULL
+
+  # Running means after burn-in
+  beta_mean  <- rep(0, p)
+  Xbeta_mean <- rep(0, n)
+  k_mean     <- 0L
+
+  beta.gibbs[1, ] <- beta.curr
+
+  for (g in 2:n.gibbs) {
+    res <- permute_mh_beta_normal(Y, X, sigma, Xbeta, beta.curr, force_swap = force_swap)
+    Xbeta     <- res$Xbeta
+    beta.curr <- res$beta
+    beta.gibbs[g, ] <- beta.curr
+
+    # Update running means only after burn-in
+    if (g > burn_in) {
+      k_mean <- k_mean + 1L
+      beta_mean  <- beta_mean  + (beta.curr - beta_mean) / k_mean
+      Xbeta_mean <- Xbeta_mean + (Xbeta     - Xbeta_mean) / k_mean
+    }
+
+    # Consistency check: cached Xbeta equals X %*% beta
+    if (!quite && (g %% check_every == 0)) {
+      Xbeta_chk <- as.numeric(X %*% beta.curr)
+      err <- max(abs(Xbeta - Xbeta_chk))
+      if (!is.finite(err) || err > 1e-6) {
+        stop(sprintf("Xbeta drift detected at iter %d: max|Xbeta - X%%*%%beta| = %.3e", g, err))
+      }
+    }
+
+    # Diagnostics: use running means (posterior mean) after burn-in
+    if (!quite && g > burn_in && (g %% print_every == 0)) {
+      pred_mse_mean <- mean((Y - Xbeta_mean)^2)
+      msg <- sprintf("Iter %d: predMSE(mean)=%.6f  mean_acc=%.3f  k=%d",
+                     g, pred_mse_mean, mean(res$acc_vec), k_mean)
+
+      if (!is.null(beta_true)) {
+        beta_mse_mean <- mean((beta_mean - beta_true)^2)
+        sig_mse_mean  <- mean((Xbeta_mean - Xbeta_true)^2)
+        msg <- paste0(msg, sprintf("  betaMSE(mean)=%.6f  signalMSE(mean)=%.6f",
+                                   beta_mse_mean, sig_mse_mean))
+      }
+
+      cat(msg, "\n")
+      flush.console()
+    }
+  }
+
+  list(beta.gibbs = beta.gibbs,
+       beta_mean = if (k_mean > 0) beta_mean else NULL,
+       Xbeta_mean = if (k_mean > 0) Xbeta_mean else NULL,
+       k_mean = k_mean)
+}
